@@ -17,7 +17,6 @@ WebApp.connectHandlers.use(bodyParser.urlencoded({ extended: true })).use(functi
 
 Saml2.isCallbackRequest = function (req) {
   var config = ServiceConfiguration.configurations.findOne({service: 'saml2'});
-  //Log.warn('req=' + JSON.stringify({url: req.url, method: req.method}));
   return !!(config && req.url === config.path && req.method === 'POST');
 };
 
@@ -32,9 +31,12 @@ Saml2.certToPEM = function (cert) {
   }
 };
 
-Saml2.getData = function (xml, cb, req, res) {
+Saml2.validate = function (xml) {
   var doc = new XmlDom.DOMParser().parseFromString(xml);
-  var signature = XmlCrypto.xpath(doc, "/*/*[local-name(.)='Signature' and namespace-uri(.)='http://www.w3.org/2000/09/xmldsig#']")[0];
+  var signature = XmlCrypto.xpath(doc,
+    "/*/*[local-name(.)='Signature'" +
+    " and " +
+    "namespace-uri(.)='http://www.w3.org/2000/09/xmldsig#']")[0];
   var signed = new XmlCrypto.SignedXml(null, {
     idAttribute: 'AssertionID'
   });
@@ -42,20 +44,23 @@ Saml2.getData = function (xml, cb, req, res) {
   var config = ServiceConfiguration.configurations.findOne({service: 'saml2'});
 
   signed.keyInfoProvider = {
-    getKeyInfo: function(key) {
+    getKeyInfo: function (key) {
       return "<X509Data></X509Data>"
     },
-    getKey: function(keyInfo) {
+    getKey: function (keyInfo) {
       return Saml2.certToPEM(config.cert);
     }
   };
 
   signed.loadSignature(signature.toString());
-  var valid = signed.checkSignature(xml);
-  if (!valid) {
+  return signed.checkSignature(xml);
+};
+
+Saml2.getData = function (xml, cb, req, res) {
+  if (!Saml2.validate(xml)) {
+    Log.warn('Error in SAML2 validation: ' + xml);
     throw new Error('Filed to validate SAML2 callback response');
   }
-  //Log.warn('valid=' + valid);
 
   var parser = new xml2js.Parser({tagNameProcessors: [xml2js.processors.stripPrefix], attrkey: "@", charKey: "#"});
   parser.parseString(xml, function (err, result) {
@@ -150,11 +155,8 @@ Saml2.parseData = function (data, req, res) {
     },
     options: {profile: {name: fullName}}
   };
-  //Log.warn(JSON.stringify(oauthResult));
 
-  //Log.warn(JSON.stringify(query));
   var credentialSecret = Random.secret();
-
   var credentialToken = OAuth._credentialTokenFromQuery(req.query);
 
   // Store the login result so it can be retrieved in another

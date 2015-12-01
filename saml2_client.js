@@ -22,7 +22,7 @@ Saml2.requestCredential = function (options, credentialRequestCompleteCallback) 
     '&state=' + OAuth._stateParam(loginStyle, credentialToken, options && options.redirectUrl);
 
   OAuth.launchLogin({
-    loginService: "saml2",
+    loginService: 'saml2',
     loginStyle: loginStyle,
     loginUrl: loginUrl,
     credentialRequestCompleteCallback: credentialRequestCompleteCallback,
